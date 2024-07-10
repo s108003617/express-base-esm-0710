@@ -21,6 +21,7 @@ import 'dotenv/config.js'
 // 定義安全的私鑰字串
 const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET
 
+//---- PUT -------S
 router.put('/:id/profile', async function (req, res) {
   // 轉為數字
   const id = Number(req.params.id)
@@ -34,7 +35,7 @@ router.put('/:id/profile', async function (req, res) {
       id,
     },
     logging: console.log,
-    individualHooks: true, // 更新時要加密密碼字串 trigger the beforeUpdate hook
+    individualHooks: true, // 更新時要加密密碼字串，觸發模型中的beforeUpdate勾子
   })
 
   // 沒有更新到任何資料 -> 失敗或沒有資料被更新
@@ -52,6 +53,20 @@ router.put('/:id/profile', async function (req, res) {
 
   // 回傳
   return res.json({ status: 'success', data: { member: updatedMember } })
+})
+//---- PUT -------E
+
+//---- GET -------S
+// 檢查登入狀態用
+router.get('/check', authenticate, async (req, res) => {
+  // 查詢資料庫目前的資料
+  const member = await Member.findByPk(req.user.id, {
+    raw: true, // 只需要資料表中資料
+  })
+
+  // 不回傳密碼值
+  delete member.password
+  return res.json({ status: 'success', data: { member } })
 })
 
 // 會員得到個人資料用
@@ -75,7 +90,9 @@ router.get('/:id', async function (req, res) {
 
   return res.json({ status: 'success', data: { member } })
 })
+//---- GET -------E
 
+//---- POST -------S
 // 使用一般mysql+SQL的語法
 router.post('/', async function (req, res) {
   // req.body資料範例
@@ -268,10 +285,6 @@ router.post('/logout', authenticate, (req, res) => {
   res.clearCookie('accessToken', { httpOnly: true })
   res.json({ status: 'success', data: null })
 })
-
-/* GET home page. */
-// router.get('/', function (req, res, next) {
-//   res.render('index', { title: 'members' })
-// })
+//---- POST -------E
 
 export default router
