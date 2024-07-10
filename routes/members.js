@@ -263,6 +263,12 @@ router.post('/login', async (req, res) => {
   })
 })
 
+router.post('/logout', authenticate, (req, res) => {
+  // 清除cookie
+  res.clearCookie('accessToken', { httpOnly: true })
+  res.json({ status: 'success', data: null })
+})
+
 /* GET home page. */
 // router.get('/', function (req, res, next) {
 //   res.render('index', { title: 'members' })
