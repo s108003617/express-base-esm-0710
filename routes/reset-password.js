@@ -7,16 +7,16 @@ import transporter from '#configs/mail.js'
 import 'dotenv/config.js'
 
 // 電子郵件文字訊息樣版
-const mailText = (otpToken) => `親愛的網站會員 您好，
+const mailText = (otpToken) => `親愛的3C SHOP會員 您好，
 通知重設密碼所需要的驗証碼，
 請輸入以下的6位數字，重設密碼頁面的"電子郵件驗証碼"欄位中。
-請注意驗証碼將於寄送後30分鐘後到期，如有任何問題請洽網站客服人員:
+請注意驗証碼將於寄送後30分鐘後到期:
     
 ${otpToken}
     
 敬上
 
-台灣 NextJS Inc. 網站`
+3C SHOP`
 
 // create otp
 router.post('/otp', async (req, res, next) => {
