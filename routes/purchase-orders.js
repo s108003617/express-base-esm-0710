@@ -1,9 +1,27 @@
 import sequelize from '#configs/db.js'
+import authenticate from '#middlewares/authenticate.js'
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       console.log('開始處理 GET 請求');
+
+      // 創建一個 Promise 來處理身份驗證
+      const authPromise = new Promise((resolve, reject) => {
+        authenticate(req, res, (error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // 等待身份驗證完成
+      await authPromise;
+
+      // 如果身份驗證成功，繼續處理請求
+      const userId = req.user.id;
 
       // 檢查數據庫連接
       await sequelize.authenticate();
@@ -16,9 +34,6 @@ export default async function handler(req, res) {
       if (!PurchaseOrder) {
         throw new Error('PurchaseOrder 模型未找到');
       }
-
-      // 假設用戶ID是4（實際應用中,這應該從session或token中獲取）
-      const userId = 4;
 
       console.log('正在查詢訂單，用戶ID:', userId);
       const orders = await PurchaseOrder.findAll({
@@ -34,7 +49,11 @@ export default async function handler(req, res) {
       res.status(200).json({ status: 'success', data: { orders: plainOrders } });
     } catch (error) {
       console.error('獲取訂單時發生錯誤:', error);
-      res.status(500).json({ status: 'error', message: '獲取訂單失敗', error: error.message });
+      if (error.name === 'UnauthorizedError') {
+        res.status(401).json({ status: 'error', message: '未授權訪問' });
+      } else {
+        res.status(500).json({ status: 'error', message: '獲取訂單失敗', error: error.message });
+      }
     }
   } else {
     res.setHeader('Allow', ['GET']);
