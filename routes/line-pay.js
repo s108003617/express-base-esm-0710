@@ -1,239 +1,221 @@
 import express from 'express'
-const router = express.Router()
-
-// 資料庫使用
 import sequelize from '#configs/db.js'
-const { Purchase_Order } = sequelize.models
-
-// 中介軟體，存取隱私會員資料用
 import authenticate from '#middlewares/authenticate.js'
-
-// line pay使用npm套件
 import { createLinePayClient } from 'line-pay-merchant'
-// 產生uuid用
 import { v4 as uuidv4 } from 'uuid'
-
-// 存取`.env`設定檔案使用
 import 'dotenv/config.js'
 
-// 定義安全的私鑰字串
+const router = express.Router()
+const { Purchase_Order } = sequelize.models
+
 const linePayClient = createLinePayClient({
   channelId: process.env.LINE_PAY_CHANNEL_ID,
   channelSecretKey: process.env.LINE_PAY_CHANNEL_SECRET,
   env: process.env.NODE_ENV,
 })
 
-// 在資料庫建立order資料(需要會員登入才能使用)
 router.post('/create-order', authenticate, async (req, res) => {
-  // 會員id由authenticate中介軟體提供
   const userId = req.user.id
-
-  //產生 orderId與packageId
   const orderId = uuidv4()
   const packageId = uuidv4()
 
-  // 處理產品資訊並計算實際總價
-  const products = req.body.products.map(product => ({
-    id: product.id,
-    name: product.name,
-    imageUrl: "https://via.placeholder.com/84x84",
-    quantity: product.quantity,
-    price: product.price
-  }))
+  const { amount, originalAmount, products, couponId } = req.body
 
-  const actualTotal = products.reduce((sum, product) => sum + (product.quantity * product.price), 0)
-
-  // 要傳送給line pay的訂單資訊
   const order = {
-    orderId: orderId,
+    orderId,
     currency: 'TWD',
-    amount: actualTotal,
+    amount,  // 使用前端傳來的折扣後金額
     packages: [
       {
         id: packageId,
-        amount: actualTotal,
-        products: products
+        amount,  // 使用折扣後金額
+        products: products.map(product => ({
+          id: product.id,
+          name: product.name,
+          imageUrl: "https://via.placeholder.com/84x84",
+          quantity: product.quantity,
+          price: product.price
+        }))
       },
     ],
     options: { display: { locale: 'zh_TW' } },
   }
 
-  console.log('Order to be sent to LINE Pay:', order)
-
-  // 要儲存到資料庫的order資料
   const dbOrder = {
     id: orderId,
     user_id: userId,
-    amount: actualTotal,
-    discounted_amount: req.body.amount, // 保存折扣後的金額，如果需要的話
-    status: 'pending', // 'pending' | 'paid' | 'cancel' | 'fail' | 'error'
-    order_info: JSON.stringify(order), // 要傳送給line pay的訂單資訊
+    amount,  // 儲存折扣後金額
+    original_amount: originalAmount,
+    status: 'pending',
+    order_info: JSON.stringify(order),
+    coupon_id: couponId  // 儲存使用的優惠券 ID
   }
 
-  // 儲存到資料庫
   await Purchase_Order.create(dbOrder)
 
-  // 回傳給前端的資料
   res.json({ status: 'success', data: { order } })
 })
 
-// 重新導向到line-pay，進行交易(純導向不回應前端)
-// 資料格式參考 https://enylin.github.io/line-pay-merchant/api-reference/request.html#example
 router.get('/reserve', async (req, res) => {
-  if (!req.query.orderId) {
-    return res.json({ status: 'error', message: 'order id不存在' })
-  }
-
-  const orderId = req.query.orderId
-
-  // 設定重新導向與失敗導向的網址
-  const redirectUrls = {
-    confirmUrl: process.env.REACT_REDIRECT_CONFIRM_URL,
-    cancelUrl: process.env.REACT_REDIRECT_CANCEL_URL,
-  }
-
-  // 從資料庫取得訂單資料
-  const orderRecord = await Purchase_Order.findByPk(orderId, {
-    raw: true, // 只需要資料表中資料
-  })
-
-  // const orderRecord = await findOne('orders', { order_id: orderId })
-
-  // order_info記錄要向line pay要求的訂單json
-  const order = JSON.parse(orderRecord.order_info)
-
-  //const order = cache.get(orderId)
-  console.log(`獲得訂單資料，內容如下：`)
-  console.log(order)
-
   try {
-    // 向line pay傳送的訂單資料
+    if (!req.query.orderId) {
+      throw new Error('order id不存在')
+    }
+
+    const orderId = req.query.orderId
+    console.log(`Processing order: ${orderId}`)
+
+    const redirectUrls = {
+      confirmUrl: process.env.REACT_REDIRECT_CONFIRM_URL,
+      cancelUrl: process.env.REACT_REDIRECT_CANCEL_URL,
+    }
+
+    const orderRecord = await Purchase_Order.findByPk(orderId, { raw: true })
+    if (!orderRecord) {
+      throw new Error(`Order not found: ${orderId}`)
+    }
+    console.log('Order record:', orderRecord)
+
+    let order
+    try {
+      order = JSON.parse(orderRecord.order_info)
+    } catch (e) {
+      throw new Error(`Invalid order_info JSON: ${e.message}`)
+    }
+    console.log('Parsed order:', order)
+
+    if (!order.packages || !order.packages[0] || !order.packages[0].products) {
+      throw new Error('Invalid order structure: missing packages or products')
+    }
+
+    // 計算折扣比例，確保不會得到 NaN
+    const discountRatio = orderRecord.original_amount > 0 
+      ? orderRecord.amount / orderRecord.original_amount 
+      : 1
+    console.log(`Discount ratio: ${discountRatio}`)
+
+    // 調整每個商品的價格，確保價格不為 0、undefined 或 null
+    let totalAdjustedPrice = 0
+    order.packages[0].products = order.packages[0].products.map((product, index) => {
+      const originalPrice = Number(product.price)
+      if (isNaN(originalPrice) || originalPrice <= 0) {
+        throw new Error(`Invalid price for product at index ${index}: ${product.price}`)
+      }
+      const adjustedPrice = Math.max(1, Math.round(originalPrice * discountRatio))
+      totalAdjustedPrice += adjustedPrice * product.quantity
+      console.log(`Product ${index}: Original price: ${originalPrice}, Adjusted price: ${adjustedPrice}`)
+      return {
+        ...product,
+        price: adjustedPrice
+      }
+    })
+
+    // 如果調整後的總價與訂單金額不一致，調整最後一個商品的價格
+    const priceDifference = order.amount - totalAdjustedPrice
+    if (priceDifference !== 0 && order.packages[0].products.length > 0) {
+      const lastProduct = order.packages[0].products[order.packages[0].products.length - 1]
+      lastProduct.price += Math.round(priceDifference / lastProduct.quantity)
+      console.log(`Adjusted last product price to account for ${priceDifference} difference`)
+    }
+
+    // 重新計算包裹金額，確保與訂單總金額一致
+    order.packages[0].amount = order.amount
+    console.log(`Final order amount: ${order.amount}`)
+
+    console.log('Prepared order for LINE Pay:', JSON.stringify(order, null, 2))
+
     const linePayResponse = await linePayClient.request.send({
       body: { ...order, redirectUrls },
     })
 
-    // 深拷貝一份order資料
-    const reservation = JSON.parse(JSON.stringify(order))
+    console.log('LINE Pay response:', linePayResponse.body)
 
-    reservation.returnCode = linePayResponse.body.returnCode
-    reservation.returnMessage = linePayResponse.body.returnMessage
-    reservation.transactionId = linePayResponse.body.info.transactionId
-    reservation.paymentAccessToken =
-      linePayResponse.body.info.paymentAccessToken
+    const reservation = {
+      ...order,
+      returnCode: linePayResponse.body.returnCode,
+      returnMessage: linePayResponse.body.returnMessage,
+      transactionId: linePayResponse.body.info.transactionId,
+      paymentAccessToken: linePayResponse.body.info.paymentAccessToken
+    }
 
-    console.log(`預計付款資料(Reservation)已建立。資料如下:`)
-    console.log(reservation)
-
-    // 在db儲存reservation資料
-    const result = await Purchase_Order.update(
+    await Purchase_Order.update(
       {
         reservation: JSON.stringify(reservation),
         transaction_id: reservation.transactionId,
       },
       {
-        where: {
-          id: orderId,
-        },
+        where: { id: orderId },
       }
     )
 
-    // console.log(result)
-
-    // 導向到付款頁面， line pay回應後會帶有info.paymentUrl.web為付款網址
     res.redirect(linePayResponse.body.info.paymentUrl.web)
   } catch (e) {
-    console.log('error', e)
+    console.error('Error in /reserve:', e)
+    res.status(500).json({ status: 'error', message: 'Failed to process the reservation', details: e.message, stack: e.stack })
   }
 })
 
-// 向Line Pay確認交易結果
-// 格式參考: https://enylin.github.io/line-pay-merchant/api-reference/confirm.html#example
 router.get('/confirm', async (req, res) => {
-  // 網址上需要有transactionId
-  const transactionId = req.query.transactionId
+  const { transactionId } = req.query
 
-  // 從資料庫取得交易資料
   const dbOrder = await Purchase_Order.findOne({
     where: { transaction_id: transactionId },
-    raw: true, // 只需要資料表中資料
+    raw: true,
   })
 
-  console.log(dbOrder)
+  if (!dbOrder) {
+    return res.status(404).json({ status: 'error', message: 'Order not found' })
+  }
 
-  // 交易資料
   const transaction = JSON.parse(dbOrder.reservation)
-
-  console.log(transaction)
-
-  // 交易金額
   const amount = transaction.amount
 
   try {
-    // 最後確認交易
     const linePayResponse = await linePayClient.confirm.send({
-      transactionId: transactionId,
+      transactionId,
       body: {
         currency: 'TWD',
-        amount: amount,
+        amount,
       },
     })
 
-    // linePayResponse.body回傳的資料
-    console.log(linePayResponse)
+    const status = linePayResponse.body.returnCode === '0000' ? 'paid' : 'fail'
 
-    //transaction.confirmBody = linePayResponse.body
-
-    // status: 'pending' | 'paid' | 'cancel' | 'fail' | 'error'
-    let status = 'paid'
-
-    if (linePayResponse.body.returnCode !== '0000') {
-      status = 'fail'
-    }
-
-    // 更新資料庫的訂單狀態
-    const result = await Purchase_Order.update(
+    await Purchase_Order.update(
       {
         status,
         return_code: linePayResponse.body.returnCode,
         confirm: JSON.stringify(linePayResponse.body),
       },
       {
-        where: {
-          id: dbOrder.id,
-        },
+        where: { id: dbOrder.id },
       }
     )
 
-    console.log(result)
-
     return res.json({ status: 'success', data: linePayResponse.body })
   } catch (error) {
-    return res.json({ status: 'fail', data: error.data })
+    console.error('Confirmation error:', error)
+    return res.status(500).json({ status: 'fail', message: 'Failed to confirm the transaction' })
   }
 })
 
-// 檢查交易用
 router.get('/check-transaction', async (req, res) => {
-  const transactionId = req.query.transactionId
+  const { transactionId } = req.query
+
+  if (!transactionId) {
+    return res.status(400).json({ status: 'error', message: 'Transaction ID is required' })
+  }
 
   try {
     const linePayResponse = await linePayClient.checkPaymentStatus.send({
-      transactionId: transactionId,
+      transactionId,
       params: {},
     })
 
-    // 範例:
-    // {
-    //   "body": {
-    //     "returnCode": "0000",
-    //     "returnMessage": "reserved transaction."
-    //   },
-    //   "comments": {}
-    // }
-
     res.json(linePayResponse.body)
   } catch (e) {
-    res.json({ error: e })
+    console.error('Check transaction error:', e)
+    res.status(500).json({ status: 'error', message: 'Failed to check transaction status' })
   }
 })
 
