@@ -32,28 +32,40 @@ router.post('/create-order', authenticate, async (req, res) => {
   const orderId = uuidv4()
   const packageId = uuidv4()
 
+  // 處理產品資訊並計算實際總價
+  const products = req.body.products.map(product => ({
+    id: product.id,
+    name: product.name,
+    imageUrl: "https://via.placeholder.com/84x84",
+    quantity: product.quantity,
+    price: product.price
+  }))
+
+  const actualTotal = products.reduce((sum, product) => sum + (product.quantity * product.price), 0)
+
   // 要傳送給line pay的訂單資訊
   const order = {
     orderId: orderId,
     currency: 'TWD',
-    amount: req.body.amount,
+    amount: actualTotal,
     packages: [
       {
         id: packageId,
-        amount: req.body.amount,
-        products: req.body.products,
+        amount: actualTotal,
+        products: products
       },
     ],
     options: { display: { locale: 'zh_TW' } },
   }
 
-  //console.log(order)
+  console.log('Order to be sent to LINE Pay:', order)
 
   // 要儲存到資料庫的order資料
   const dbOrder = {
     id: orderId,
     user_id: userId,
-    amount: req.body.amount,
+    amount: actualTotal,
+    discounted_amount: req.body.amount, // 保存折扣後的金額，如果需要的話
     status: 'pending', // 'pending' | 'paid' | 'cancel' | 'fail' | 'error'
     order_info: JSON.stringify(order), // 要傳送給line pay的訂單資訊
   }
