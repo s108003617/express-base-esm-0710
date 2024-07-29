@@ -4,6 +4,7 @@ import { Sequelize } from 'sequelize'
 import 'dotenv/config.js'
 
 import applyModels from '#db-helpers/sequelize/models-setup.js'
+import applyAssociations from '#db-helpers/sequelize/associations-setup.js'
 
 // 資料庫連結資訊
 const sequelize = new Sequelize(
@@ -56,6 +57,9 @@ sequelize
 
 // 載入models中的各檔案
 await applyModels(sequelize)
+
+// 應用關聯
+applyAssociations(sequelize)
 
 // 同步化模型與資料庫結構
 // 注意，這只會更改資料庫中的表，而不會更改JS端的模型

@@ -24,28 +24,46 @@ export default async function handler(req, res) {
     await sequelize.authenticate();
     console.log('數據庫連接成功');
 
-    // 從 Sequelize 實例獲取 Favorite 模型
+    // 從 Sequelize 實例獲取 Favorite 和 Product1 模型
     const Favorite = sequelize.models.Favorite;
+    const Product1 = sequelize.models.Product1;
 
-    // 檢查 Favorite 模型是否存在
-    if (!Favorite) {
-      throw new Error('Favorite 模型未找到');
+    // 檢查模型是否存在
+    if (!Favorite || !Product1) {
+      throw new Error('模型未找到');
     }
 
     if (req.method === 'GET') {
       console.log('正在查詢收藏，用戶ID:', userId);
       const favorites = await Favorite.findAll({
         where: { uid: userId },
-        order: [['created_at', 'DESC']]
+        order: [['created_at', 'DESC']],
+        include: [{
+          model: Product1,
+          as: 'product',
+          required: false
+        }]
       });
 
       console.log('查詢完成，收藏數量:', favorites.length);
 
-      // 將收藏數據轉換為純JSON對象
-      const plainFavorites = favorites.map(favorite => favorite.get({ plain: true }));
+      // 將收藏數據轉換為純JSON對象，包括產品信息
+      const plainFavorites = favorites.map(favorite => {
+        const plainFavorite = favorite.get({ plain: true });
+        return {
+          ...plainFavorite,
+          product: plainFavorite.product ? {
+            id: plainFavorite.product.id,
+            name: plainFavorite.product.name,
+            price: plainFavorite.product.price,
+            photos: plainFavorite.product.photos
+          } : null
+        };
+      });
 
       res.status(200).json({ status: 'success', data: { favorites: plainFavorites } });
     } else if (req.method === 'DELETE') {
+      // DELETE 方法的邏輯保持不變
       const { favoriteId } = req.query;
 
       if (!favoriteId) {
