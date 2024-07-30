@@ -16,7 +16,18 @@ export default async function (sequelize) {
       },
       amount: {
         type: DataTypes.INTEGER,
+        allowNull: false,
+        comment: '折扣後最終金額',
+      },
+      original_amount: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        comment: '折扣前原始金額',
+      },
+      discount_amount: {
+        type: DataTypes.INTEGER,
         allowNull: true,
+        comment: '折扣金額',
       },
       transaction_id: {
         type: DataTypes.STRING,
@@ -34,36 +45,63 @@ export default async function (sequelize) {
       },
       status: {
         type: DataTypes.STRING,
-        allowNull: true,
+        allowNull: false,
+        defaultValue: 'pending',
         comment: 'pending, paid, fail, cancel, error',
       },
       order_info: {
         type: DataTypes.TEXT,
+        allowNull: false,
+        comment: '發送給 LINE Pay 的完整訂單詳情',
+      },
+      products: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        comment: '購買商品的 JSON 字符串',
+      },
+      product_details: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        comment: '購買商品的詳細信息，包括 ID、名稱、數量和單價',
+      },
+      coupon_id: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        comment: 'send to line pay',
+        comment: '使用的優惠券 ID',
+      },
+      coupon_code: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        comment: '使用的優惠券代碼',
+      },
+      discount_percentage: {
+        type: DataTypes.FLOAT,
+        allowNull: true,
+        comment: '折扣百分比',
       },
       reservation: {
         type: DataTypes.TEXT,
         allowNull: true,
-        comment: 'get from line pay',
+        comment: '從 LINE Pay 獲得的預訂詳情',
       },
       confirm: {
         type: DataTypes.TEXT,
         allowNull: true,
-        comment: 'confirm from line pay',
+        comment: '從 LINE Pay 獲得的確認詳情',
       },
       return_code: {
         type: DataTypes.STRING,
         allowNull: true,
+        comment: '從 LINE Pay 獲得的返回代碼',
       },
     },
     {
-      tableName: 'purchase_order', //直接提供資料表名稱
-      timestamps: true, // 使用時間戳
-      paranoid: false, // 軟性刪除
-      underscored: true, // 所有自動建立欄位，使用snake_case命名
-      createdAt: 'created_at', // 建立的時間戳
-      updatedAt: 'updated_at', // 更新的時間戳
+      tableName: 'purchase_order',
+      timestamps: true,
+      paranoid: false,
+      underscored: true,
+      createdAt: 'created_at',
+      updatedAt: 'updated_at',
     }
   )
 }

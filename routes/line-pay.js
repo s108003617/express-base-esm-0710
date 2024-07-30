@@ -24,11 +24,11 @@ router.post('/create-order', authenticate, async (req, res) => {
   const order = {
     orderId,
     currency: 'TWD',
-    amount,  // 使用前端傳來的折扣後金額
+    amount,
     packages: [
       {
         id: packageId,
-        amount,  // 使用折扣後金額
+        amount,
         products: products.map(product => ({
           id: product.id,
           name: product.name,
@@ -41,19 +41,33 @@ router.post('/create-order', authenticate, async (req, res) => {
     options: { display: { locale: 'zh_TW' } },
   }
 
+  const productDetails = products.map(product => ({
+    id: product.id,
+    name: product.name,
+    quantity: product.quantity,
+    price: product.price
+  }))
+
   const dbOrder = {
     id: orderId,
     user_id: userId,
-    amount,  // 儲存折扣後金額
+    amount,
     original_amount: originalAmount,
     status: 'pending',
     order_info: JSON.stringify(order),
-    coupon_id: couponId  // 儲存使用的優惠券 ID
+    products: JSON.stringify(products),
+    product_details: JSON.stringify(productDetails),
+    coupon_id: couponId
   }
 
-  await Purchase_Order.create(dbOrder)
-
-  res.json({ status: 'success', data: { order } })
+  try {
+    const createdOrder = await Purchase_Order.create(dbOrder)
+    console.log('Created order:', createdOrder)
+    res.json({ status: 'success', data: { order: { ...createdOrder.toJSON(), orderId } } })
+  } catch (error) {
+    console.error('Error creating order:', error)
+    res.status(500).json({ status: 'error', message: 'Failed to create order', details: error.message })
+  }
 })
 
 router.get('/reserve', async (req, res) => {
