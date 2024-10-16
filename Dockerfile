@@ -22,4 +22,3 @@ CMD ["npm", "start"]
 
 
 
-gcloud run deploy express-api --image gcr.io/ez3c-shop/express-api --platform managed --region us-central1 --allow-unauthenticated
