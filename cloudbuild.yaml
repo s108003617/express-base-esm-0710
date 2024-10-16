@@ -3,5 +3,7 @@ steps:
   args: ['install']
 - name: 'gcr.io/cloud-builders/npm'
   args: ['run', 'build']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/backend', '.']
 - name: 'gcr.io/cloud-builders/gcloud'
-  args: ['app', 'deploy', 'app.yaml']  # 根據你的設定，這裡可能是 App Engine 的配置檔
+  args: ['run', 'deploy', 'backend', '--image', 'gcr.io/$PROJECT_ID/backend', '--platform', 'managed']
