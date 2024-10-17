@@ -18,7 +18,7 @@ COPY . .
 EXPOSE 8080
 
 # 啟動應用
-CMD ["npm", "start"]
+CMD ["npm", "dev"]
 
 
 
