@@ -34,7 +34,12 @@ router.get('/check', authenticate, async (req, res) => {
 router.post('/login', async (req, res) => {
   // 從前端來的資料 req.body = { username:'xxxx', password :'xxxx'}
   const loginUser = req.body
-
+  try {
+    // 你的登入邏輯...
+  } catch (error) {
+    console.error('Login error:', error)
+    return res.status(500).json({ status: 'error', message: '伺服器錯誤' })
+  }
   // 檢查從前端來的資料哪些為必要
   if (!loginUser.username || !loginUser.password) {
     return res.json({ status: 'fail', data: null })

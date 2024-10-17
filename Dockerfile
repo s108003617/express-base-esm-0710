@@ -8,6 +8,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
+# 在構建映像時安裝 bcrypt 和其他依賴
+RUN rm -rf node_modules && npm install
+
 # 複製所有檔案
 COPY . .
 
@@ -15,10 +18,13 @@ COPY . .
 # RUN npm run build
 
 # 暴露應用使用的端口
-EXPOSE 3000
+EXPOSE 8080
+
+# 設置環境變量
+ENV PORT=8080
 
 # 啟動應用
-CMD ["npm", "bin/www"]
+CMD ["npm", "start"]
 
 
 

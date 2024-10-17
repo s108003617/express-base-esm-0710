@@ -16,6 +16,10 @@ import 'dotenv/config.js'
  */
 
 var port = normalizePort(process.env.PORT || '8080')
+// app.listen(port, () => {
+//   console.log(`Server is running on port ${port}`)
+// })
+console.log(`Using port: ${port}`)
 app.set('port', port)
 
 /**
