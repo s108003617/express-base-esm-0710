@@ -15,10 +15,10 @@ COPY . .
 # RUN npm run build
 
 # 暴露應用使用的端口
-EXPOSE 8080
+EXPOSE 3000
 
 # 啟動應用
-CMD ["npm", "dev"]
+CMD ["npm", "bin/www"]
 
 
 
